@@ -1,0 +1,6 @@
+{
+  "name": "Maaltijd Roulette Pro",
+  "description": "Een slimme, mobielvriendelijke maaltijdplanner met een strikte 5-daagse ingrediënten-cooldown regel (basis-cooldown) en vegetarische opties.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
