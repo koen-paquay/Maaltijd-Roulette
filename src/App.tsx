@@ -11,7 +11,7 @@ import ScheduleView from './components/ScheduleView';
 import AuthView from './components/AuthView';
 import { DEFAULT_MEALS } from './data/defaultMeals';
 import { 
-  CalendarDays, Utensils, User, RefreshCw, Smartphone, Monitor, ShieldAlert, Sparkles, AlertCircle
+  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -26,7 +26,6 @@ export default function App() {
   
   // Visual states
   const [isDataSyncing, setIsDataSyncing] = useState(true);
-  const [useDeviceFrame, setUseDeviceFrame] = useState(true);
   const [vegetariansOnlyFilter, setVegetariansOnlyFilter] = useState(false);
 
   // Sync initial configuration on mount
@@ -245,45 +244,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-150 flex flex-col items-center justify-center p-0 md:p-6 text-slate-900 selection:bg-af-orange-transparent selection:text-af-orange font-sans">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-0 sm:p-4 md:p-8 text-slate-900 selection:bg-af-orange-transparent selection:text-af-orange font-sans">
       
-      {/* 1. TOP LAYOUT SELECTOR ON DESKTOP */}
-      <div className="hidden md:flex items-center gap-3 mb-4 text-[11px] z-10 font-bold bg-slate-900 text-slate-300 rounded-full p-1 border border-slate-800 shadow-md font-display uppercase tracking-wider">
-        <button
-          id="toggle-frame-desktop"
-          onClick={() => setUseDeviceFrame(true)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer transition duration-150 ${
-            useDeviceFrame ? 'bg-gradient-to-r from-af-red to-af-orange text-white shadow-sm' : 'hover:text-white'
-          }`}
-        >
-          <Smartphone className="h-3.5 w-3.5" /> Mobiel Simulator
-        </button>
-        <button
-          id="toggle-fullscreen-desktop"
-          onClick={() => setUseDeviceFrame(false)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer transition duration-150 ${
-            !useDeviceFrame ? 'bg-gradient-to-r from-af-red to-af-orange text-white shadow-sm' : 'hover:text-white'
-          }`}
-        >
-          <Monitor className="h-3.5 w-3.5" /> Volledig Scherm
-        </button>
-      </div>
-
-      {/* 2. MAIN CONTAINER APPLICATION FRAMEWORK */}
+      {/* MAIN CONTAINER APPLICATION WORKSPACE */}
       <div 
         id="app-wrapper-frame"
-        className={`w-full transition-all duration-300 flex flex-col bg-white relative ${
-          useDeviceFrame 
-            ? 'md:w-[390px] md:h-[844px] md:rounded-[44px] md:border-[12px] md:border-slate-900 md:shadow-2xl md:overflow-hidden' 
-            : 'max-w-md min-h-screen md:min-h-[85vh] md:rounded-2xl md:shadow-xl md:border md:border-slate-200/85'
-        }`}
+        className="w-full max-w-2xl bg-white relative flex flex-col min-h-screen sm:min-h-[85vh] sm:rounded-2xl sm:shadow-lg border border-slate-200/80 overflow-hidden"
       >
-        {/* Notch detail inside smartphone emulation */}
-        {useDeviceFrame && (
-          <div className="hidden md:block absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-2xl z-40">
-            <div className="w-12 h-1.5 bg-slate-800 mx-auto mt-1.5 rounded-full" />
-          </div>
-        )}
 
         {/* 3. APP TOP ACTIONS BAR HEADER */}
         <header className="sticky top-0 z-30 bg-white border-b border-af-border px-5 pt-7 md:pt-5 pb-3.5 flex items-center justify-between shadow-xs">
