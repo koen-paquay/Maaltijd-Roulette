@@ -400,7 +400,7 @@ export default function App() {
 
         {/* 5. NATIVE STYLE BOTTOM TAB NAVIGATION BAR (ONLY IF LOGGED IN) */}
         {currentUser && (
-          <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-105 z-30 px-5 pt-2.5 pb-5.5 shadow-md flex items-center justify-around font-display">
+          <nav className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t border-slate-105 z-50 px-5 pt-2.5 pb-5.5 shadow-md flex items-center justify-around font-display">
             <button
               id="tab-btn-planner"
               onClick={() => setActiveTab('planner')}
