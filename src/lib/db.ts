@@ -20,6 +20,40 @@ export const supabase = supabaseUrl.startsWith('http')
 // LocalStorage keys for fallback/config storage
 const STORAGE_CONFIG_KEY = 'mrp_db_config';
 
+function mapLegacyBase(base: string, name: string): Meal['base'] {
+  const normBase = (base || '').toLowerCase().trim();
+  const validBases = ['pasta', 'rijst', 'aardappels', 'noedels', 'deeg', 'wraps', 'soep'];
+  
+  if (validBases.includes(normBase)) {
+    return normBase as Meal['base'];
+  }
+  
+  const lowerName = (name || '').toLowerCase();
+  if (lowerName.includes('pizza') || lowerName.includes('pannenkoek') || lowerName.includes('quiche') || lowerName.includes('focaccia') || lowerName.includes('deeg') || lowerName.includes('lahmacun') || lowerName.includes('plaatkoek')) {
+    return 'deeg';
+  }
+  if (lowerName.includes('wrap') || lowerName.includes('taco') || lowerName.includes('quesadilla') || lowerName.includes('burrito') || lowerName.includes('tortilla') || lowerName.includes('fajita')) {
+    return 'wraps';
+  }
+  if (lowerName.includes('soep') || lowerName.includes('bouillon') || lowerName.includes('snert') || lowerName.includes('tom kha')) {
+    return 'soep';
+  }
+  if (lowerName.includes('pasta') || lowerName.includes('spaghetti') || lowerName.includes('lasagne') || lowerName.includes('macaroni') || lowerName.includes('penne') || lowerName.includes('gnocchi') || lowerName.includes('tagliatelle') || lowerName.includes('tortellini')) {
+    return 'pasta';
+  }
+  if (lowerName.includes('rijst') || lowerName.includes('curry') || lowerName.includes('nasi') || lowerName.includes('pokebowl') || lowerName.includes('chili') || lowerName.includes('risotto') || lowerName.includes('pilav')) {
+    return 'rijst';
+  }
+  if (lowerName.includes('aardappel') || lowerName.includes('friet') || lowerName.includes('frites') || lowerName.includes('boerenkool') || lowerName.includes('stamppot') || lowerName.includes('hutspot') || lowerName.includes('puree') || lowerName.includes('gratin') || lowerName.includes('patat') || lowerName.includes('snack')) {
+    return 'aardappels';
+  }
+  if (lowerName.includes('noedel') || lowerName.includes('bami') || lowerName.includes('ramen') || lowerName.includes('wok') || lowerName.includes('udong') || lowerName.includes('pad thai')) {
+    return 'noedels';
+  }
+  
+  return 'pasta'; // safe default fallback
+}
+
 export const DatabaseService = {
   // Config
   getConfig(): DatabaseConfig {
@@ -181,7 +215,7 @@ export const DatabaseService = {
       return data.map(m => ({
         id: m.id,
         name: m.name,
-        base: m.base as any,
+        base: mapLegacyBase(m.base, m.name),
         isVegetarian: m.is_vegetarian,
         notes: m.notes
       }));
@@ -248,7 +282,13 @@ export const DatabaseService = {
         id: w.id,
         title: w.title,
         createdAt: w.created_at,
-        schedule: w.schedule as (Meal | null)[],
+        schedule: ((w.schedule || []) as (Meal | null)[]).map(m => {
+          if (!m) return null;
+          return {
+            ...m,
+            base: mapLegacyBase(m.base, m.name)
+          };
+        }),
         isVegetarianFilter: w.is_vegetarian_filter
       }));
     } catch (e) {
