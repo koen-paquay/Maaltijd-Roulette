@@ -157,6 +157,35 @@ export const DatabaseService = {
     }
   },
 
+  async resetPasswordForEmail(email: string): Promise<void> {
+    if (!supabase) {
+      throw new Error(
+        'Supabase is niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe in de omgevingsvariabelen.'
+      );
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  },
+
+  async updatePassword(password: string): Promise<void> {
+    if (!supabase) {
+      throw new Error(
+        'Supabase is niet geconfigureerd. Voeg VITE_SUPABASE_URL en VITE_SUPABASE_ANON_KEY toe in de omgevingsvariabelen.'
+      );
+    }
+    const { error } = await supabase.auth.updateUser({
+      password: password
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  },
+
   // Helper to extract active user from current Supabase session
   async getCurrentSessionUser(): Promise<UserProfile | null> {
     if (!supabase) return null;

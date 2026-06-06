@@ -34,10 +34,36 @@ export default function AuthView({
   const [passwordInput, setPasswordInput] = useState('');
   const [usernameInput, setUsernameInput] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
   const supabaseConfigured = DatabaseService.isSupabaseConfigured();
+
+  // Submit password reset link request
+  const handlePasswordResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabaseConfigured) {
+      setAuthError('Supabase is nog niet geconfigureerd in de omgevingsvariabelen (Settings).');
+      return;
+    }
+    if (!emailInput.trim()) {
+      setAuthError('Vul a.u.v. een geldig e-mailadres in.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      await DatabaseService.resetPasswordForEmail(emailInput);
+      setResetSuccess(true);
+    } catch (err: any) {
+      setAuthError(err.message || 'Kon geen reset-link verzenden. Probeer het later opnieuw.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   // Submit Login or registration request to Supabase
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -84,6 +110,105 @@ export default function AuthView({
 
   // Renders login screen when nested in a separate layout, or as full screen backup
   if (!currentUser) {
+    if (isForgotPasswordMode) {
+      if (resetSuccess) {
+        return (
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-xs space-y-4 font-sans max-w-sm mx-auto">
+            <div className="text-center">
+              <div className="h-12 w-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2.5 text-xl">
+                <Check className="h-6 w-6" />
+              </div>
+              <h3 className="font-display font-extrabold text-slate-900 text-sm uppercase tracking-wider">
+                E-mail verzonden
+              </h3>
+              <p className="text-xs text-slate-450 mt-1 leading-relaxed">
+                Er is een e-mail met een herstellink gestuurd naar <strong className="text-slate-700">{emailInput}</strong>. Controleer uw inbox (en spam-folder) om uw wachtwoord opnieuw in te stellen.
+              </p>
+            </div>
+
+            <button
+              id="back-to-login-success"
+              type="button"
+              onClick={() => {
+                setIsForgotPasswordMode(false);
+                setResetSuccess(false);
+                setEmailInput('');
+                setAuthError('');
+              }}
+              className="w-full py-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-750 rounded-xl font-display text-xs font-bold uppercase tracking-wider leading-none transition cursor-pointer"
+            >
+              Terug naar inloggen
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-xs space-y-4 font-sans max-w-sm mx-auto">
+          <div className="text-center">
+            <div className="h-12 w-12 rounded-full bg-af-orange-light text-af-orange flex items-center justify-center mx-auto mb-2.5 text-xl">
+              🔑
+            </div>
+            <h3 className="font-display font-extrabold text-slate-900 text-sm uppercase tracking-wider">
+              Wachtwoord herstellen
+            </h3>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              Vul uw e-mailadres in om een herstellink te ontvangen waarmee u een nieuw wachtwoord kunt instellen.
+            </p>
+          </div>
+
+          <form onSubmit={handlePasswordResetSubmit} className="space-y-3">
+            {authError && (
+              <p className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-xs text-red-650 font-bold leading-relaxed">
+                {authError}
+              </p>
+            )}
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-display">E-mailadres</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  id="reset-email-input"
+                  type="email"
+                  required
+                  disabled={authLoading}
+                  placeholder="chef@provibe.nl"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 placeholder-slate-400 font-sans"
+                />
+              </div>
+            </div>
+
+            <button
+              id="reset-submit-btn"
+              type="submit"
+              disabled={authLoading}
+              className="w-full py-3 bg-gradient-to-r from-af-red to-af-orange text-white rounded-xl font-display text-xs font-bold uppercase tracking-wider leading-none inline-flex items-center justify-center gap-2 transition duration-150 hover:translate-y-[-1px] active:translate-y-0 cursor-pointer shadow-active-btn disabled:opacity-50"
+            >
+              <span>{authLoading ? 'Versturen...' : 'Herstellink versturen'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+
+          <div className="flex justify-center text-[10px] font-display uppercase tracking-wider font-extrabold pt-1">
+            <button
+              id="back-to-login"
+              type="button"
+              onClick={() => {
+                setIsForgotPasswordMode(false);
+                setAuthError('');
+              }}
+              className="text-af-orange hover:underline cursor-pointer"
+            >
+              Terug naar inloggen
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-xs space-y-4 font-sans max-w-sm mx-auto">
         <div className="text-center">
@@ -169,6 +294,23 @@ export default function AuthView({
               />
             </div>
           </div>
+
+          {!isRegisterMode && (
+            <div className="flex justify-end pt-0.5">
+              <button
+                id="forgot-password-link"
+                type="button"
+                onClick={() => {
+                  setIsForgotPasswordMode(true);
+                  setAuthError('');
+                  setEmailInput('');
+                }}
+                className="text-[10.5px] uppercase font-bold font-display text-slate-400 hover:text-af-orange hover:underline cursor-pointer transition"
+              >
+                Wachtwoord vergeten?
+              </button>
+            </div>
+          )}
 
           <button
             id="auth-submit-btn-supabase"

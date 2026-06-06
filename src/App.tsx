@@ -10,7 +10,7 @@ import MealManager from './components/MealManager';
 import ScheduleView from './components/ScheduleView';
 import AuthView from './components/AuthView';
 import { 
-  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle, LogOut
+  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle, LogOut, Lock, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -24,12 +24,47 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [savedWeeks, setSavedWeeks] = useState<SavedWeek[]>([]);
   
+  // Password Recovery States
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetSuccessMessage, setResetSuccessMessage] = useState('');
+  const [isResetUpdating, setIsResetUpdating] = useState(false);
+
   // Visual states
   const [isDataSyncing, setIsDataSyncing] = useState(true);
   const [vegetariansOnlyFilter, setVegetariansOnlyFilter] = useState(false);
 
+  const handlePasswordResetUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setResetError('Het nieuwe wachtwoord moet minimaal 6 tekens bevatten.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError('De ingevulde wachtwoorden komen niet overeen.');
+      return;
+    }
+
+    setIsResetUpdating(true);
+    setResetError('');
+    try {
+      await DatabaseService.updatePassword(newPassword);
+      setResetSuccessMessage('Uw wachtwoord is succesvol gewijzigd! U kunt nu inloggen met uw nieuwe wachtwoord.');
+    } catch (err: any) {
+      setResetError(err.message || 'Kon uw wachtwoord niet herstellen. Probeer het opnieuw.');
+    } finally {
+      setIsResetUpdating(false);
+    }
+  };
+
   // Initialize and listen to native Supabase Auth status changes
   useEffect(() => {
+    if (window.location.hash.includes('type=recovery') || window.location.href.includes('type=recovery')) {
+      setIsRecoveringPassword(true);
+    }
+
     async function checkCurrentSession() {
       setIsDataSyncing(true);
       try {
@@ -66,6 +101,9 @@ export default function App() {
 
     // Subscribe to auth events (SignIn, SignOut, TokenRefresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveringPassword(true);
+      }
       setIsDataSyncing(true);
       try {
         if (session?.user) {
@@ -89,11 +127,13 @@ export default function App() {
             setSavedWeeks(weeks);
           }
         } else {
-          setCurrentUser(null);
-          setMeals([]);
-          setSavedWeeks([]);
-          setSchedule(Array(7).fill(null));
-          setLockedDays(Array(7).fill(false));
+          if (event !== 'PASSWORD_RECOVERY') {
+            setCurrentUser(null);
+            setMeals([]);
+            setSavedWeeks([]);
+            setSchedule(Array(7).fill(null));
+            setLockedDays(Array(7).fill(false));
+          }
         }
       } catch (err) {
         console.error('Auth state change syncing failed:', err);
@@ -371,7 +411,127 @@ export default function App() {
 
         {/* 4. MAIN BODY SCROLLABLE WINDOW */}
         <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-slate-50/40 flex flex-col justify-start">
-          {!currentUser ? (
+          {isRecoveringPassword ? (
+            <div className="my-auto py-4">
+              <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-xs space-y-4 font-sans max-w-sm mx-auto">
+                <div className="text-center">
+                  <div className="h-12 w-12 rounded-full bg-af-orange-light text-af-orange flex items-center justify-center mx-auto mb-2.5 text-xl">
+                    🔑
+                  </div>
+                  <h3 className="font-display font-extrabold text-slate-900 text-sm uppercase tracking-wider">
+                    Nieuw wachtwoord instellen
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Kies een sterk nieuw wachtwoord van minimaal 6 tekens voor uw account.
+                  </p>
+                </div>
+
+                {resetSuccessMessage ? (
+                  <div className="space-y-4">
+                    <p className="p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-850 font-bold leading-relaxed">
+                      {resetSuccessMessage}
+                    </p>
+                    <button
+                      id="recovery-success-btn"
+                      onClick={async () => {
+                        setIsDataSyncing(true);
+                        try {
+                          await DatabaseService.logOut();
+                          setCurrentUser(null);
+                          setIsRecoveringPassword(false);
+                          setNewPassword('');
+                          setConfirmPassword('');
+                          setResetSuccessMessage('');
+                          setResetError('');
+                        } finally {
+                          setIsDataSyncing(false);
+                        }
+                      }}
+                      className="w-full py-3 bg-gradient-to-r from-af-red to-af-orange text-white rounded-xl font-display text-xs font-bold uppercase tracking-wider leading-none inline-flex items-center justify-center cursor-pointer shadow-active-btn"
+                    >
+                      Terug naar inlogscherm
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handlePasswordResetUpdateSubmit} className="space-y-3">
+                    {resetError && (
+                      <p className="p-2.5 bg-red-50 border border-red-100 rounded-xl text-xs text-red-650 font-bold leading-relaxed">
+                        {resetError}
+                      </p>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-display">Nieuw wachtwoord</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          id="new-password-input"
+                          type="password"
+                          required
+                          disabled={isResetUpdating}
+                          placeholder="Minimaal 6 tekens"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-display">Herhaal nieuw wachtwoord</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                          id="confirm-password-input"
+                          type="password"
+                          required
+                          disabled={isResetUpdating}
+                          placeholder="••••••"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      id="update-pass-submit"
+                      type="submit"
+                      disabled={isResetUpdating}
+                      className="w-full py-3 bg-gradient-to-r from-af-red to-af-orange text-white rounded-xl font-display text-xs font-bold uppercase tracking-wider leading-none inline-flex items-center justify-center gap-2 transition duration-150 hover:translate-y-[-1px] active:translate-y-0 cursor-pointer shadow-active-btn disabled:opacity-50"
+                    >
+                      <span>{isResetUpdating ? 'Bijwerken...' : 'Wachtwoord bijwerken'}</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                    
+                    <div className="flex justify-center text-[10px] font-display uppercase tracking-wider font-extrabold pt-1">
+                      <button
+                        id="cancel-reset-password"
+                        type="button"
+                        onClick={async () => {
+                          setIsDataSyncing(true);
+                          try {
+                            await DatabaseService.logOut();
+                            setCurrentUser(null);
+                            setIsRecoveringPassword(false);
+                            setNewPassword('');
+                            setConfirmPassword('');
+                            setResetSuccessMessage('');
+                            setResetError('');
+                          } finally {
+                            setIsDataSyncing(false);
+                          }
+                        }}
+                        className="text-slate-400 hover:text-slate-650 cursor-pointer"
+                      >
+                        Annuleren
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          ) : !currentUser ? (
             <div className="my-auto py-4">
               <AuthView
                 currentUser={currentUser}
@@ -399,7 +559,7 @@ export default function App() {
         </main>
 
         {/* 5. NATIVE STYLE BOTTOM TAB NAVIGATION BAR (ONLY IF LOGGED IN) */}
-        {currentUser && (
+        {currentUser && !isRecoveringPassword && (
           <nav className="fixed bottom-0 left-0 right-0 max-w-2xl mx-auto bg-white border-t border-slate-105 z-50 px-5 pt-2.5 pb-5.5 shadow-md flex items-center justify-around font-display">
             <button
               id="tab-btn-planner"
