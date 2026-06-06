@@ -14,6 +14,8 @@ interface ScheduleViewProps {
   meals: Meal[];
   schedule: (Meal | null)[];
   setSchedule: React.Dispatch<React.SetStateAction<(Meal | null)[]>>;
+  lockedDays: boolean[];
+  setLockedDays: React.Dispatch<React.SetStateAction<boolean[]>>;
   isVegeFilter: boolean;
   setIsVegeFilter: (val: boolean) => void;
   userId: string | undefined;
@@ -24,6 +26,8 @@ export default function ScheduleView({
   meals,
   schedule,
   setSchedule,
+  lockedDays,
+  setLockedDays,
   isVegeFilter,
   setIsVegeFilter,
   userId,
@@ -40,34 +44,14 @@ export default function ScheduleView({
   const [saveSuccess, setSaveSuccess] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Locked days state (0 to 6)
-  const [lockedDays, setLockedDays] = useState<boolean[]>([false, false, false, false, false, false, true]); // Sunday Sunday is locked by default
-
   // Days fill progress
   const filledCount = useMemo(() => {
     return schedule.filter(m => m !== null).length;
   }, [schedule]);
 
-  // Sunday setup helper (ensure sunday has 'Patat met snacks' and stays locked if not set)
-  React.useEffect(() => {
-    if (!schedule[6] || schedule[6].id !== 'sunday-fixed') {
-      const updated = [...schedule];
-      updated[6] = {
-        id: 'sunday-fixed',
-        name: 'Patat met snacks 🍟',
-        base: 'aardappels',
-        isVegetarian: true, // satisfies either filter
-        notes: 'Zondagse traditie, altijd lekker!'
-      };
-      setSchedule(updated);
-    }
-  }, [schedule, setSchedule]);
-
   // Core Cooldown Check Function: Bidirectional 5-days check
   const checkMealCooldownConflict = (meal: Meal, dayIdx: number, currentSchedule: (Meal | null)[]): { hasConflict: boolean; reason?: string } => {
-    if (dayIdx === 6) return { hasConflict: false }; // Bypass for Sunday
-
-    for (let i = 0; i < 6; i++) { // Only checking Monday-Saturday
+    for (let i = 0; i < 7; i++) {
       if (i === dayIdx) continue;
       
       const gap = Math.abs(i - dayIdx);
@@ -87,9 +71,7 @@ export default function ScheduleView({
 
   // Check if a base is allowed on a day
   const isBaseAllowedOnDay = (base: MealBase, dayIdx: number, currentSchedule: (Meal | null)[]): boolean => {
-    if (dayIdx === 6) return true;
-
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       if (i === dayIdx) continue;
       if (Math.abs(i - dayIdx) <= 5) {
         const other = currentSchedule[i];
@@ -101,7 +83,7 @@ export default function ScheduleView({
     return true;
   };
 
-  // Backtracking algorithm to generate the entire week Mon-Sat
+  // Backtracking algorithm to generate the entire week with automatic trial and fallback
   const handleSpinEntireWeek = () => {
     // Collect vegetarian options if toggle set
     const filteredMeals = isVegeFilter ? meals.filter(m => m.isVegetarian) : meals;
@@ -111,60 +93,78 @@ export default function ScheduleView({
       return;
     }
 
-    const testSchedule = [...schedule];
-    testSchedule[6] = {
-      id: 'sunday-fixed',
-      name: 'Patat met snacks 🍟',
-      base: 'aardappels',
-      isVegetarian: true,
-      notes: 'Zondagse traditie, altijd lekker!'
-    };
+    let finalSchedule: (Meal | null)[] | null = null;
+    let solvedCooldown = 5;
 
-    // Perform depth-first backtracking search
-    function solve(dayIdx: number): boolean {
-      if (dayIdx === 6) {
-        return true; // We successfully filled Monday through Saturday
-      }
+    // Try progressively weaker cooldowns (from 5 down to 0) if 200 attempts at a higher level fail
+    for (let currentCooldown = 5; currentCooldown >= 0; currentCooldown--) {
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const testSchedule = [...schedule];
 
-      // If day is locked and already has a valid selection, proceed
-      if (lockedDays[dayIdx] && testSchedule[dayIdx] !== null) {
-        // Just verify if the pre-existing meal is allowed (typically yes, but if filters changed it might be invalid)
-        // For standard UI experience, we trust the lock.
-        return solve(dayIdx + 1);
-      }
-
-      // Try in random order
-      const shuffledOptions = [...filteredMeals].sort(() => Math.random() - 0.5);
-
-      for (const meal of shuffledOptions) {
-        const conflict = checkMealCooldownConflict(meal, dayIdx, testSchedule);
-        if (!conflict.hasConflict) {
-          testSchedule[dayIdx] = meal;
-          if (solve(dayIdx + 1)) {
-            return true;
+        // Depth-first search backtracking solver
+        function solve(dayIdx: number): boolean {
+          if (dayIdx === 7) {
+            return true; // Monday (0) to Sunday (6) successfully filled
           }
-          // Backtrack
-          if (!lockedDays[dayIdx]) {
-            testSchedule[dayIdx] = null;
+
+          // If day is locked and already has a valid selection, proceed to next day
+          if (lockedDays[dayIdx] && testSchedule[dayIdx] !== null) {
+            return solve(dayIdx + 1);
           }
+
+          // Get randomized options to ensure different retry paths
+          const shuffledOptions = [...filteredMeals].sort(() => Math.random() - 0.5);
+
+          for (const meal of shuffledOptions) {
+            // Check bidirectional conflict under current cooldown level
+            let hasConflict = false;
+            for (let i = 0; i < 7; i++) {
+              if (i === dayIdx) continue;
+              if (Math.abs(i - dayIdx) <= currentCooldown) {
+                const other = testSchedule[i];
+                if (other && other.base === meal.base) {
+                  hasConflict = true;
+                  break;
+                }
+              }
+            }
+
+            if (!hasConflict) {
+              testSchedule[dayIdx] = meal;
+              if (solve(dayIdx + 1)) {
+                return true;
+              }
+              // Backtrack
+              if (!lockedDays[dayIdx]) {
+                testSchedule[dayIdx] = null;
+              }
+            }
+          }
+
+          return false; // Backtrack failure
+        }
+
+        if (solve(0)) {
+          finalSchedule = testSchedule;
+          solvedCooldown = currentCooldown;
+          break;
         }
       }
 
-      return false; // Backtrack failure
+      if (finalSchedule) {
+        break;
+      }
     }
 
-    const success = solve(0);
-    if (success) {
-      setSchedule(testSchedule);
+    if (finalSchedule) {
+      setSchedule(finalSchedule);
     } else {
-      alert('Kon geen geldig schema genereren dat voldoet aan de 5-daagse cooldown regel met de huidige maaltijden. Probeer enkele dagen te ontgrendelen of de vegetarische filter tijdelijk uit te zetten.');
+      alert('Kon geen geldig schema generen. Voeg a.u.b. meer maaltijden toe.');
     }
   };
 
   // Spin a single day
   const handleSpinSingleDay = (dayIdx: number) => {
-    if (dayIdx === 6) return; // Sunday is fixed
-
     const filteredMeals = isVegeFilter ? meals.filter(m => m.isVegetarian) : meals;
     const allowed = filteredMeals.filter(m => {
       const conflict = checkMealCooldownConflict(m, dayIdx, schedule);
@@ -172,7 +172,35 @@ export default function ScheduleView({
     });
 
     if (allowed.length === 0) {
-      alert('Geen geschikte maaltijd gevonden die aan de cooldown regels voldoet voor deze dag. Probeer de andere dagen te wijzigen.');
+      // If no meals are allowed under strict 5-day cooldown, try relaxing the check for single day spin
+      let relaxedAllowed: Meal[] = [];
+      for (let relaxedCooldown = 4; relaxedCooldown >= 0; relaxedCooldown--) {
+        relaxedAllowed = filteredMeals.filter(m => {
+          for (let i = 0; i < 7; i++) {
+            if (i === dayIdx) continue;
+            if (Math.abs(i - dayIdx) <= relaxedCooldown) {
+              const other = schedule[i];
+              if (other && other.base === m.base) {
+                return false;
+              }
+            }
+          }
+          return true;
+        });
+        if (relaxedAllowed.length > 0) {
+          break;
+        }
+      }
+
+      if (relaxedAllowed.length === 0) {
+        alert('Geen geschikte maaltijd gevonden die aan de cooldown regels voldoet voor deze dag. Probeer de andere dagen te wijzigen of voeg maaltijden toe.');
+        return;
+      }
+
+      const randomMeal = relaxedAllowed[Math.floor(Math.random() * relaxedAllowed.length)];
+      const updated = [...schedule];
+      updated[dayIdx] = randomMeal;
+      setSchedule(updated);
       return;
     }
 
@@ -184,7 +212,6 @@ export default function ScheduleView({
 
   // Toggle lock state
   const toggleLock = (dayIdx: number) => {
-    if (dayIdx === 6) return; // Sunday is always locked
     const updated = [...lockedDays];
     updated[dayIdx] = !updated[dayIdx];
     setLockedDays(updated);
@@ -192,7 +219,6 @@ export default function ScheduleView({
 
   // Clear a single day's menu selection
   const clearDay = (dayIdx: number) => {
-    if (dayIdx === 6) return; // Can't clear Sunday
     const updated = [...schedule];
     updated[dayIdx] = null;
     setSchedule(updated);
@@ -235,19 +261,11 @@ export default function ScheduleView({
     setManualSearchQuery('');
   };
 
-  // Clear all week selections (reset except Sunday)
+  // Clear all week selections
   const clearAllWeek = () => {
-    if (confirm('Wilt u het schema voor de hele week wissen? (Vergrendelde dagen worden ook gewist, behalve Zondag)')) {
-      const cleared = Array(7).fill(null);
-      cleared[6] = {
-        id: 'sunday-fixed',
-        name: 'Patat met snacks 🍟',
-        base: 'aardappels',
-        isVegetarian: true,
-        notes: 'Zondagse traditie, altijd lekker!'
-      };
-      setSchedule(cleared);
-      setLockedDays([false, false, false, false, false, false, true]);
+    if (confirm('Wilt u het schema voor de hele week wissen? (Vergrendelde dagen worden ook gewist)')) {
+      setSchedule(Array(7).fill(null));
+      setLockedDays(Array(7).fill(false));
     }
   };
 
@@ -369,7 +387,7 @@ export default function ScheduleView({
                 {/* Day status indicators / actions */}
                 <div className="flex items-center gap-1.5 z-10">
                   {/* Clear selection */}
-                  {meal && !isSunday && (
+                  {meal && (
                     <button
                       id={`btn-clear-day-${idx}`}
                       onClick={() => clearDay(idx)}
@@ -384,14 +402,12 @@ export default function ScheduleView({
                   <button
                     id={`btn-lock-${idx}`}
                     onClick={() => toggleLock(idx)}
-                    disabled={isSunday}
                     className={`p-1.5 rounded-lg transition ${
-                      isSunday ? 'text-amber-600 bg-amber-50/80 border-amber-100' :
                       isDayLocked 
                         ? 'text-af-orange bg-af-orange-light border border-af-orange-transparent hover:bg-af-orange-light/80' 
-                        : 'text-slate-400 hover:bg-slate-50 hover:text-slate-605 cursor-pointer'
+                        : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600 cursor-pointer'
                     }`}
-                    title={isSunday ? 'Altijd vastgesteld' : isDayLocked ? 'Dag vergrendeld' : 'Vergrendel dag'}
+                    title={isDayLocked ? 'Dag vergrendeld' : 'Vergrendel dag'}
                   >
                     {isDayLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                   </button>
@@ -410,7 +426,7 @@ export default function ScheduleView({
                     <div className="flex-1 min-w-0 pr-12">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="font-sans font-bold text-sm text-slate-900 leading-snug">
-                          {meal.name}
+                           {meal.name}
                         </h4>
                         {meal.isVegetarian && (
                           <span className="inline-flex rounded-full bg-emerald-50 px-1 border border-emerald-100">
@@ -444,31 +460,29 @@ export default function ScheduleView({
                 )}
 
                 {/* Spin / Manual selector buttons triggered on cards directly */}
-                {!isSunday && (
-                  <div className="absolute right-3 bottom-3 flex items-center gap-1">
-                    {!isDayLocked && (
-                      <button
-                        id={`btn-spin-day-${idx}`}
-                        onClick={() => handleSpinSingleDay(idx)}
-                        className="p-1.5 rounded-lg bg-slate-50 hover:bg-af-orange-light hover:text-af-orange transition text-slate-500 cursor-pointer shadow-xs border border-slate-150"
-                        title="Spin deze dag"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                <div className="absolute right-3 bottom-3 flex items-center gap-1">
+                  {!isDayLocked && (
                     <button
-                      id={`btn-select-manual-${idx}`}
-                      onClick={() => {
-                        setManualSelectDayIdx(idx); 
-                        setManualSearchQuery('');
-                      }}
+                      id={`btn-spin-day-${idx}`}
+                      onClick={() => handleSpinSingleDay(idx)}
                       className="p-1.5 rounded-lg bg-slate-50 hover:bg-af-orange-light hover:text-af-orange transition text-slate-500 cursor-pointer shadow-xs border border-slate-150"
-                      title="Kies handmatig"
+                      title="Spin deze dag"
                     >
-                      <Search className="h-3.5 w-3.5" />
+                      <RefreshCw className="h-3.5 w-3.5" />
                     </button>
-                  </div>
-                )}
+                  )}
+                  <button
+                    id={`btn-select-manual-${idx}`}
+                    onClick={() => {
+                      setManualSelectDayIdx(idx); 
+                      setManualSearchQuery('');
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-af-orange-light hover:text-af-orange transition text-slate-500 cursor-pointer shadow-xs border border-slate-150"
+                    title="Kies handmatig"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           );

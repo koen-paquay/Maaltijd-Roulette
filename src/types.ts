@@ -18,6 +18,8 @@ export interface UserProfile {
   email: string;
   username: string;
   isVegetarianFilter: boolean;
+  activeSchedule?: (Meal | null)[];
+  lockedDays?: boolean[];
 }
 
 export interface SavedWeek {

@@ -20,6 +20,7 @@ export default function App() {
   // App Global Sync States
   const [meals, setMeals] = useState<Meal[]>([]);
   const [schedule, setSchedule] = useState<(Meal | null)[]>(Array(7).fill(null));
+  const [lockedDays, setLockedDays] = useState<boolean[]>(Array(7).fill(false));
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [savedWeeks, setSavedWeeks] = useState<SavedWeek[]>([]);
   
@@ -37,6 +38,13 @@ export default function App() {
           setCurrentUser(user);
           setVegetariansOnlyFilter(user.isVegetarianFilter);
           
+          if (user.activeSchedule) {
+            setSchedule(user.activeSchedule);
+          }
+          if (user.lockedDays) {
+            setLockedDays(user.lockedDays);
+          }
+
           // Preload meals and schedules in the background
           const loadedMeals = await DatabaseService.getMeals(user.id);
           setMeals(loadedMeals);
@@ -61,26 +69,31 @@ export default function App() {
       setIsDataSyncing(true);
       try {
         if (session?.user) {
-          const userProfile: UserProfile = {
-            id: session.user.id,
-            email: session.user.email || '',
-            username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'Gebruiker',
-            isVegetarianFilter: !!session.user.user_metadata?.isVegetarianFilter
-          };
-          setCurrentUser(userProfile);
-          setVegetariansOnlyFilter(userProfile.isVegetarianFilter);
-          
-          // Forcefully load specific cloud items for this user session
-          const loadedMeals = await DatabaseService.getMeals(userProfile.id);
-          setMeals(loadedMeals);
-          
-          const weeks = await DatabaseService.getSavedWeeks(userProfile.id);
-          setSavedWeeks(weeks);
+          const userProfile = await DatabaseService.getCurrentSessionUser();
+          if (userProfile) {
+            setCurrentUser(userProfile);
+            setVegetariansOnlyFilter(userProfile.isVegetarianFilter);
+            
+            if (userProfile.activeSchedule) {
+              setSchedule(userProfile.activeSchedule);
+            }
+            if (userProfile.lockedDays) {
+              setLockedDays(userProfile.lockedDays);
+            }
+
+            // Forcefully load specific cloud items for this user session
+            const loadedMeals = await DatabaseService.getMeals(userProfile.id);
+            setMeals(loadedMeals);
+            
+            const weeks = await DatabaseService.getSavedWeeks(userProfile.id);
+            setSavedWeeks(weeks);
+          }
         } else {
           setCurrentUser(null);
           setMeals([]);
           setSavedWeeks([]);
           setSchedule(Array(7).fill(null));
+          setLockedDays(Array(7).fill(false));
         }
       } catch (err) {
         console.error('Auth state change syncing failed:', err);
@@ -93,6 +106,41 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Autosave active progress (schedule + lockedDays) to user profile metadata when they change
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const syncToCloud = async () => {
+      try {
+        // Fetch fresh copy to avoid overwrite during concurrent states
+        const rawUser = await DatabaseService.getCurrentSessionUser();
+        if (!rawUser) return;
+
+        const hasChanges = 
+          JSON.stringify(rawUser.activeSchedule) !== JSON.stringify(schedule) ||
+          JSON.stringify(rawUser.lockedDays) !== JSON.stringify(lockedDays);
+
+        if (hasChanges) {
+          const updatedProfile: UserProfile = {
+            ...rawUser,
+            activeSchedule: schedule,
+            lockedDays: lockedDays
+          };
+          setCurrentUser(updatedProfile);
+          await DatabaseService.updateCurrentUserProfile(updatedProfile);
+        }
+      } catch (error) {
+        console.error('Failed to autosave progress:', error);
+      }
+    };
+
+    const delayDebounceFn = setTimeout(() => {
+      syncToCloud();
+    }, 1000);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [schedule, lockedDays, currentUser?.id]);
 
   // Hook to handle updating vegetarian profile setting
   const handleToggleVegetarianFilter = async (val: boolean) => {
@@ -227,6 +275,8 @@ export default function App() {
             meals={meals}
             schedule={schedule}
             setSchedule={setSchedule}
+            lockedDays={lockedDays}
+            setLockedDays={setLockedDays}
             isVegeFilter={vegetariansOnlyFilter}
             setIsVegeFilter={handleToggleVegetarianFilter}
             userId={currentUser?.id}

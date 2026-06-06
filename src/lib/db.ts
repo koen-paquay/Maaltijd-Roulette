@@ -131,11 +131,22 @@ export const DatabaseService = {
       throw new Error('Gebruiker niet gevonden of ongeldig.');
     }
 
+    const rawSchedule = data.user.user_metadata?.activeSchedule;
+    const mappedSchedule = Array.isArray(rawSchedule) ? rawSchedule.map((m: any) => {
+      if (!m) return null;
+      return {
+        ...m,
+        base: mapLegacyBase(m.base, m.name)
+      };
+    }) : undefined;
+
     return {
       id: data.user.id,
       email: data.user.email || cleanEmail,
       username: data.user.user_metadata?.username || cleanEmail.split('@')[0],
-      isVegetarianFilter: !!data.user.user_metadata?.isVegetarianFilter
+      isVegetarianFilter: !!data.user.user_metadata?.isVegetarianFilter,
+      activeSchedule: mappedSchedule,
+      lockedDays: data.user.user_metadata?.lockedDays
     };
   },
 
@@ -154,11 +165,22 @@ export const DatabaseService = {
       if (!session || !session.user) return null;
 
       const user = session.user;
+      const rawSchedule = user.user_metadata?.activeSchedule;
+      const mappedSchedule = Array.isArray(rawSchedule) ? rawSchedule.map((m: any) => {
+        if (!m) return null;
+        return {
+          ...m,
+          base: mapLegacyBase(m.base, m.name)
+        };
+      }) : undefined;
+
       return {
         id: user.id,
         email: user.email || '',
         username: user.user_metadata?.username || user.email?.split('@')[0] || 'Gebruiker',
-        isVegetarianFilter: !!user.user_metadata?.isVegetarianFilter
+        isVegetarianFilter: !!user.user_metadata?.isVegetarianFilter,
+        activeSchedule: mappedSchedule,
+        lockedDays: user.user_metadata?.lockedDays || undefined
       };
     } catch (e) {
       console.error('Error retrieving session user:', e);
@@ -172,7 +194,9 @@ export const DatabaseService = {
       const { error } = await supabase.auth.updateUser({
         data: {
           username: profile.username,
-          isVegetarianFilter: profile.isVegetarianFilter
+          isVegetarianFilter: profile.isVegetarianFilter,
+          activeSchedule: profile.activeSchedule,
+          lockedDays: profile.lockedDays
         }
       });
       if (error) throw error;
