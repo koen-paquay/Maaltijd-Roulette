@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Meal, DAY_NAMES_DUTCH, BASE_LABELS_DUTCH, BASE_COLORS, SavedWeek } from '../types';
+import { Meal, MealBase, DAY_NAMES_DUTCH, BASE_LABELS_DUTCH, BASE_COLORS, SavedWeek } from '../types';
 import { 
   Sparkles, Lock, Unlock, RefreshCw, Archive, Search, HelpCircle, AlertCircle, CheckCircle, Save, Leaf, Eye, X, BookOpen
 } from 'lucide-react';
@@ -55,7 +55,7 @@ export default function ScheduleView({
       updated[6] = {
         id: 'sunday-fixed',
         name: 'Patat met snacks 🍟',
-        base: 'overig',
+        base: 'aardappels',
         isVegetarian: true, // satisfies either filter
         notes: 'Zondagse traditie, altijd lekker!'
       };
@@ -66,7 +66,6 @@ export default function ScheduleView({
   // Core Cooldown Check Function: Bidirectional 5-days check
   const checkMealCooldownConflict = (meal: Meal, dayIdx: number, currentSchedule: (Meal | null)[]): { hasConflict: boolean; reason?: string } => {
     if (dayIdx === 6) return { hasConflict: false }; // Bypass for Sunday
-    if (meal.base === 'overig') return { hasConflict: false }; // Overig has no constraints
 
     for (let i = 0; i < 6; i++) { // Only checking Monday-Saturday
       if (i === dayIdx) continue;
@@ -87,9 +86,8 @@ export default function ScheduleView({
   };
 
   // Check if a base is allowed on a day
-  const isBaseAllowedOnDay = (base: string, dayIdx: number, currentSchedule: (Meal | null)[]): boolean => {
+  const isBaseAllowedOnDay = (base: MealBase, dayIdx: number, currentSchedule: (Meal | null)[]): boolean => {
     if (dayIdx === 6) return true;
-    if (base === 'overig') return true;
 
     for (let i = 0; i < 6; i++) {
       if (i === dayIdx) continue;
@@ -117,7 +115,7 @@ export default function ScheduleView({
     testSchedule[6] = {
       id: 'sunday-fixed',
       name: 'Patat met snacks 🍟',
-      base: 'overig',
+      base: 'aardappels',
       isVegetarian: true,
       notes: 'Zondagse traditie, altijd lekker!'
     };
@@ -244,7 +242,7 @@ export default function ScheduleView({
       cleared[6] = {
         id: 'sunday-fixed',
         name: 'Patat met snacks 🍟',
-        base: 'overig',
+        base: 'aardappels',
         isVegetarian: true,
         notes: 'Zondagse traditie, altijd lekker!'
       };

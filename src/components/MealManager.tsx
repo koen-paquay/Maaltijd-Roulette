@@ -38,7 +38,7 @@ export default function MealManager({
 
   // Meal Form fields
   const [formName, setFormName] = useState('');
-  const [formBase, setFormBase] = useState<MealBase>('overig');
+  const [formBase, setFormBase] = useState<MealBase>('pasta');
   const [formIsVegetarian, setFormIsVegetarian] = useState(false);
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState('');
@@ -47,7 +47,7 @@ export default function MealManager({
   const handleOpenAdd = () => {
     setEditingMeal(null);
     setFormName('');
-    setFormBase('overig');
+    setFormBase('pasta');
     setFormIsVegetarian(false);
     setFormNotes('');
     setFormError('');
@@ -115,11 +115,13 @@ export default function MealManager({
 
   // Stats calculation
   const stats = useMemo(() => {
-    const counts = { pasta: 0, aardappels: 0, rijst: 0, noedels: 0, overig: 0 };
+    const counts = { pasta: 0, rijst: 0, aardappels: 0, noedels: 0, deeg: 0, wraps: 0, soep: 0 };
     let vegetarianCount = 0;
 
     meals.forEach(m => {
-      counts[m.base]++;
+      if (counts[m.base] !== undefined) {
+        counts[m.base]++;
+      }
       if (m.isVegetarian) vegetarianCount++;
     });
 
@@ -147,7 +149,7 @@ export default function MealManager({
           <div className="mt-1 flex items-baseline justify-center gap-1">
             <span className="text-3xl font-extrabold text-slate-900">{stats.vegetarian}</span>
             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">
-              ({stats.total > 0 ? Math.round((stats.vegetarian / stats.total) * 100) : 0}%)
+              ({stats.total > 0 ? Math.round((stats.vegetarian / stats.total) * 105) / 105 * 100 : 0}%)
             </span>
           </div>
         </div>
@@ -163,9 +165,11 @@ export default function MealManager({
             const count = stats.counts[base] || 0;
             const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
             const colorClass = base === 'pasta' ? 'bg-amber-500' :
-                               base === 'aardappels' ? 'bg-yellow-600' :
                                base === 'rijst' ? 'bg-sky-500' :
-                               base === 'noedels' ? 'bg-purple-500' : 'bg-emerald-500';
+                               base === 'aardappels' ? 'bg-yellow-600' :
+                               base === 'noedels' ? 'bg-purple-500' :
+                               base === 'deeg' ? 'bg-rose-500' :
+                               base === 'wraps' ? 'bg-emerald-500' : 'bg-teal-500';
             return (
               <div key={base} className="flex items-center text-xs">
                 <span className="w-24 text-slate-600 font-medium truncate font-sans">{BASE_LABELS_DUTCH[base]}</span>
@@ -185,7 +189,7 @@ export default function MealManager({
         <div className="mt-4 flex items-start gap-2 rounded-xl bg-af-orange-light border border-af-orange-transparent p-3.5">
           <HelpCircle className="h-4 w-4 text-af-orange shrink-0 mt-0.5" />
           <p className="text-[11px] text-slate-700 leading-relaxed font-sans">
-            <strong>Tip voor cooldown:</strong> Omdat Pasta, Aardappels, Rijst en Noedels een 5-daagse cooldown triggeren, heb je minimaal <strong>2-3 gerechten uit de overige-categorie ('🍽️ Overig')</strong> nodig om een geldige vliegende start van 7 dagen te genereren!
+            <strong>Tip voor de planner:</strong> Omdat de 5-daagse cooldown nu strikt geldt voor álle types (pasta, rijst, aardappels, noedels, deeg, wraps en soep), is het belangrijk om voldoende verschillende gerechten over alle categorieën heen te hebben om een foutloos weekmenu te genereren!
           </p>
         </div>
       </div>
@@ -406,9 +410,7 @@ export default function MealManager({
               ))}
             </select>
             <p className="text-[10px] text-slate-400 mt-1">
-              {formBase === 'overig' 
-                ? 'Overige maaltijden kennen geen cooldown en mogen opeenvolgend gegeten worden.' 
-                : `${BASE_LABELS_DUTCH[formBase].split(' ')[1]} triggert een strikte cooldown van 5 dagen op andere gerechten van dit type.`}
+              {`${BASE_LABELS_DUTCH[formBase].split(' ')[1]} triggert een strikte cooldown van 5 dagen op andere gerechten van dit type.`}
             </p>
           </div>
 
