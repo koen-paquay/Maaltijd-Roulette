@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Meal, MealBase, BASE_LABELS_DUTCH, BASE_COLORS } from '../types';
 import { 
   Plus, Search, Leaf, Trash2, Edit3, Sparkles, Filter, AlertTriangle, HelpCircle, ArrowUpDown
@@ -44,7 +44,7 @@ export default function MealManager({
   const [formError, setFormError] = useState('');
 
   // Open Add modal
-  const handleOpenAdd = () => {
+  const handleOpenAdd = useCallback(() => {
     setEditingMeal(null);
     setFormName('');
     setFormBase('pasta');
@@ -52,10 +52,10 @@ export default function MealManager({
     setFormNotes('');
     setFormError('');
     setIsFormOpen(true);
-  };
+  }, []);
 
   // Open Edit modal
-  const handleOpenEdit = (meal: Meal) => {
+  const handleOpenEdit = useCallback((meal: Meal) => {
     setEditingMeal(meal);
     setFormName(meal.name);
     setFormBase(meal.base);
@@ -63,10 +63,10 @@ export default function MealManager({
     setFormNotes(meal.notes || '');
     setFormError('');
     setIsFormOpen(true);
-  };
+  }, []);
 
   // Submit Form
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       setFormError('Vul a.u.b. een maaltijdnaam in.');
@@ -91,14 +91,14 @@ export default function MealManager({
     } catch (err: any) {
       setFormError(err.message || 'Fout bij opslaan.');
     }
-  };
+  }, [formName, formBase, formIsVegetarian, formNotes, editingMeal, onUpdateMeal, onAddMeal]);
 
   // Delete Meal
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (confirm('Weet u zeker dat u dit gerecht wilt verwijderen uit de database?')) {
       await onDeleteMeal(id);
     }
-  };
+  }, [onDeleteMeal]);
 
   // Filtered Meals
   const filteredMeals = useMemo(() => {
@@ -210,7 +210,7 @@ export default function MealManager({
             />
           </div>
           <button
-            id="btn-add-meal"
+            id="btn-add-meal" title="Nieuw gerecht toevoegen" aria-label="Nieuw gerecht toevoegen"
             onClick={handleOpenAdd}
             className="rounded-xl bg-gradient-to-r from-af-red to-af-orange px-4 text-white hover:translate-y-[-1px] active:translate-y-0 transition flex items-center justify-center gap-1 py-2.5 shadow-sm shadow-active-btn font-display text-xs font-bold uppercase tracking-wider cursor-pointer"
           >

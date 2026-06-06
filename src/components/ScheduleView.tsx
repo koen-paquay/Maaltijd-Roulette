@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Meal, MealBase, DAY_NAMES_DUTCH, BASE_LABELS_DUTCH, BASE_COLORS, SavedWeek } from '../types';
 import { 
   Sparkles, Lock, Unlock, RefreshCw, Archive, Search, HelpCircle, AlertCircle, CheckCircle, Save, Leaf, Eye, X, BookOpen
@@ -49,42 +49,41 @@ export default function ScheduleView({
     return schedule.filter(m => m !== null).length;
   }, [schedule]);
 
-  // Core Cooldown Check Function: Bidirectional 5-days check
-  const checkMealCooldownConflict = (meal: Meal, dayIdx: number, currentSchedule: (Meal | null)[]): { hasConflict: boolean; reason?: string } => {
+  // Shared helper for base conflict checking
+  const getBaseConflict = (base: MealBase, dayIdx: number, currentSchedule: (Meal | null)[], cooldown: number): number | null => {
     for (let i = 0; i < 7; i++) {
       if (i === dayIdx) continue;
-      
       const gap = Math.abs(i - dayIdx);
-      if (gap <= 5) {
-        const otherMeal = currentSchedule[i];
-        if (otherMeal && otherMeal.base === meal.base) {
-          return {
-            hasConflict: true,
-            reason: `De basis '${BASE_LABELS_DUTCH[meal.base]}' is al gekozen op ${DAY_NAMES_DUTCH[i]} (reeds ${6 - gap}e dag, cooldown is 5 dagen).`
-          };
+      if (gap <= cooldown) {
+        const other = currentSchedule[i];
+        if (other && other.base === base) {
+          return i;
         }
       }
     }
+    return null;
+  };
 
+  // Core Cooldown Check Function: Bidirectional 5-days check
+  const checkMealCooldownConflict = (meal: Meal, dayIdx: number, currentSchedule: (Meal | null)[]): { hasConflict: boolean; reason?: string } => {
+    const conflictIdx = getBaseConflict(meal.base, dayIdx, currentSchedule, 5);
+    if (conflictIdx !== null) {
+      const gap = Math.abs(conflictIdx - dayIdx);
+      return {
+        hasConflict: true,
+        reason: `De basis '${BASE_LABELS_DUTCH[meal.base]}' is al gekozen op ${DAY_NAMES_DUTCH[conflictIdx]} (reeds ${6 - gap}e dag, cooldown is 5 dagen).`
+      };
+    }
     return { hasConflict: false };
   };
 
   // Check if a base is allowed on a day
   const isBaseAllowedOnDay = (base: MealBase, dayIdx: number, currentSchedule: (Meal | null)[]): boolean => {
-    for (let i = 0; i < 7; i++) {
-      if (i === dayIdx) continue;
-      if (Math.abs(i - dayIdx) <= 5) {
-        const other = currentSchedule[i];
-        if (other && other.base === base) {
-          return false;
-        }
-      }
-    }
-    return true;
+    return getBaseConflict(base, dayIdx, currentSchedule, 5) === null;
   };
 
   // Backtracking algorithm to generate the entire week with automatic trial and fallback
-  const handleSpinEntireWeek = () => {
+  const handleSpinEntireWeek = useCallback(() => {
     // Collect vegetarian options if toggle set
     const filteredMeals = isVegeFilter ? meals.filter(m => m.isVegetarian) : meals;
 
@@ -117,17 +116,7 @@ export default function ScheduleView({
 
           for (const meal of shuffledOptions) {
             // Check bidirectional conflict under current cooldown level
-            let hasConflict = false;
-            for (let i = 0; i < 7; i++) {
-              if (i === dayIdx) continue;
-              if (Math.abs(i - dayIdx) <= currentCooldown) {
-                const other = testSchedule[i];
-                if (other && other.base === meal.base) {
-                  hasConflict = true;
-                  break;
-                }
-              }
-            }
+            const hasConflict = getBaseConflict(meal.base, dayIdx, testSchedule, currentCooldown) !== null;
 
             if (!hasConflict) {
               testSchedule[dayIdx] = meal;
@@ -161,10 +150,10 @@ export default function ScheduleView({
     } else {
       alert('Kon geen geldig schema generen. Voeg a.u.b. meer maaltijden toe.');
     }
-  };
+  }, [isVegeFilter, meals, schedule, lockedDays, setSchedule, getBaseConflict]);
 
   // Spin a single day
-  const handleSpinSingleDay = (dayIdx: number) => {
+  const handleSpinSingleDay = useCallback((dayIdx: number) => {
     const filteredMeals = isVegeFilter ? meals.filter(m => m.isVegetarian) : meals;
     const allowed = filteredMeals.filter(m => {
       const conflict = checkMealCooldownConflict(m, dayIdx, schedule);
@@ -208,14 +197,14 @@ export default function ScheduleView({
     const updated = [...schedule];
     updated[dayIdx] = randomMeal;
     setSchedule(updated);
-  };
+  }, [isVegeFilter, meals, schedule, setSchedule, checkMealCooldownConflict]);
 
   // Toggle lock state
-  const toggleLock = (dayIdx: number) => {
+  const toggleLock = useCallback((dayIdx: number) => {
     const updated = [...lockedDays];
     updated[dayIdx] = !updated[dayIdx];
     setLockedDays(updated);
-  };
+  }, [lockedDays, setLockedDays]);
 
   // Clear a single day's menu selection
   const clearDay = (dayIdx: number) => {
@@ -243,7 +232,7 @@ export default function ScheduleView({
   }, [meals, manualSelectDayIdx, manualSearchQuery, isVegeFilter]);
 
   // Click on manual selected meal
-  const selectManualMeal = (meal: Meal) => {
+  const selectManualMeal = useCallback((meal: Meal) => {
     if (manualSelectDayIdx === null) return;
     
     // Check conflict first before setting
@@ -259,7 +248,7 @@ export default function ScheduleView({
     setSchedule(updated);
     setManualSelectDayIdx(null);
     setManualSearchQuery('');
-  };
+  }, [manualSelectDayIdx, schedule, setSchedule, checkMealCooldownConflict]);
 
   // Clear all week selections
   const clearAllWeek = () => {
@@ -270,7 +259,7 @@ export default function ScheduleView({
   };
 
   // Open Save Week dialogue
-  const handleOpenSaveWeek = () => {
+  const handleOpenSaveWeek = useCallback(() => {
     if (filledCount < 7) {
       alert('Vul eerst alle dagen van de week in om een volledig weekmenu op te slaan.');
       return;
@@ -280,9 +269,9 @@ export default function ScheduleView({
     setSaveError('');
     setSaveSuccess('');
     setIsSaveWeekOpen(true);
-  };
+  }, [filledCount]);
 
-  const handleConfirmSaveWeek = async (e: React.FormEvent) => {
+  const handleConfirmSaveWeek = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!saveWeekTitle.trim()) {
       setSaveError('Geef a.u.b. een titel op.');
@@ -303,7 +292,7 @@ export default function ScheduleView({
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [saveWeekTitle, onSaveWeek, schedule]);
 
   return (
     <div className="space-y-4">
@@ -312,7 +301,7 @@ export default function ScheduleView({
         {/* Toggle Vegetarian */}
         <div className="flex items-center gap-2">
           <button
-            id="toggle-vegetarisch-planning"
+            id="toggle-vegetarisch-planning" title="Vegetarisch filter omschakelen" aria-label="Vegetarisch filter omschakelen"
             onClick={() => setIsVegeFilter(!isVegeFilter)}
             className={`cursor-pointer w-10 h-6 flex items-center rounded-full p-1 transition-colors outline-none ${
               isVegeFilter ? 'bg-af-orange shadow-active-btn' : 'bg-slate-300'
@@ -335,7 +324,7 @@ export default function ScheduleView({
 
         {/* Action Button: Reset All */}
         <button
-          id="btn-clear-week"
+          id="btn-clear-week" aria-label="Hele week wissen"
           onClick={clearAllWeek}
           className="text-xs px-3 py-1.5 cursor-pointer rounded-lg text-slate-500 hover:text-af-red hover:bg-red-50 transition border border-transparent hover:border-red-100 font-bold font-display uppercase tracking-wider"
         >
@@ -506,9 +495,9 @@ export default function ScheduleView({
           <div className="mt-4 text-center font-display">
             {userId ? (
               <button
-                id="btn-save-week-trigger"
+                id="btn-save-week-trigger" shadow-active-btn
                 onClick={handleOpenSaveWeek}
-                className="w-full py-3 bg-gradient-to-r from-af-red to-af-orange text-white hover:translate-y-[-1px] active:translate-y-0 transition duration-150 rounded-xl text-xs font-bold leading-none inline-flex items-center justify-center gap-2 shadow-premium cursor-pointer uppercase tracking-wider"
+                className="w-full py-3 bg-gradient-to-r from-af-red to-af-orange text-white hover:translate-y-[-1px] active:translate-y-0 transition duration-150 rounded-xl text-xs font-bold leading-none inline-flex items-center justify-center gap-2 shadow-active-btn cursor-pointer uppercase tracking-wider"
               >
                 <Save className="h-3.5 w-3.5" />
                 Sla dit weekmenu op voor later!
