@@ -5,13 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { Meal, SavedWeek, UserProfile } from './types';
-import { DatabaseService } from './lib/db';
+import { DatabaseService, supabase } from './lib/db';
 import MealManager from './components/MealManager';
 import ScheduleView from './components/ScheduleView';
 import AuthView from './components/AuthView';
-import { DEFAULT_MEALS } from './data/defaultMeals';
 import { 
-  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle
+  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle, LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -28,83 +27,89 @@ export default function App() {
   const [isDataSyncing, setIsDataSyncing] = useState(true);
   const [vegetariansOnlyFilter, setVegetariansOnlyFilter] = useState(false);
 
-  // Sync initial configuration on mount
+  // Initialize and listen to native Supabase Auth status changes
   useEffect(() => {
-    async function loadInitialData() {
+    async function checkCurrentSession() {
       setIsDataSyncing(true);
       try {
-        // Load active user profile if any
-        const user = DatabaseService.getCurrentUser();
-        setCurrentUser(user);
-        
-        // Prefer loading active user's preference
+        const user = await DatabaseService.getCurrentSessionUser();
         if (user) {
+          setCurrentUser(user);
           setVegetariansOnlyFilter(user.isVegetarianFilter);
           
-          // Load user saved weekmenus
+          // Preload meals and schedules in the background
+          const loadedMeals = await DatabaseService.getMeals(user.id);
+          setMeals(loadedMeals);
           const weeks = await DatabaseService.getSavedWeeks(user.id);
           setSavedWeeks(weeks);
         }
-
-        // Fetch meals database
-        const loadedMeals = await DatabaseService.getMeals();
-        setMeals(loadedMeals);
-
-        // Prepopulate empty schedule or load Sunday
-        const initialSch = Array(7).fill(null);
-        initialSch[6] = {
-          id: 'sunday-fixed',
-          name: 'Patat met snacks 🍟',
-          base: 'overig',
-          isVegetarian: true,
-          notes: 'Zondagse traditie, altijd lekker!'
-        };
-        setSchedule(initialSch);
       } catch (err) {
-        console.error('Initial load failure:', err);
+        console.error('Session restoration failed:', err);
       } finally {
         setIsDataSyncing(false);
       }
     }
-    loadInitialData();
+
+    checkCurrentSession();
+
+    if (!supabase) {
+      return;
+    }
+
+    // Subscribe to auth events (SignIn, SignOut, TokenRefresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setIsDataSyncing(true);
+      try {
+        if (session?.user) {
+          const userProfile: UserProfile = {
+            id: session.user.id,
+            email: session.user.email || '',
+            username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'Gebruiker',
+            isVegetarianFilter: !!session.user.user_metadata?.isVegetarianFilter
+          };
+          setCurrentUser(userProfile);
+          setVegetariansOnlyFilter(userProfile.isVegetarianFilter);
+          
+          // Forcefully load specific cloud items for this user session
+          const loadedMeals = await DatabaseService.getMeals(userProfile.id);
+          setMeals(loadedMeals);
+          
+          const weeks = await DatabaseService.getSavedWeeks(userProfile.id);
+          setSavedWeeks(weeks);
+        } else {
+          setCurrentUser(null);
+          setMeals([]);
+          setSavedWeeks([]);
+          setSchedule(Array(7).fill(null));
+        }
+      } catch (err) {
+        console.error('Auth state change syncing failed:', err);
+      } finally {
+        setIsDataSyncing(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // Sync saved weeks when profile changes
-  useEffect(() => {
-    async function syncProfileData() {
-      if (currentUser) {
-        setIsDataSyncing(true);
-        try {
-          const weeks = await DatabaseService.getSavedWeeks(currentUser.id);
-          setSavedWeeks(weeks);
-          setVegetariansOnlyFilter(currentUser.isVegetarianFilter);
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsDataSyncing(false);
-        }
-      } else {
-        setSavedWeeks([]);
-      }
-    }
-    syncProfileData();
-  }, [currentUser]);
-
   // Hook to handle updating vegetarian profile setting
-  const handleToggleVegetarianFilter = (val: boolean) => {
+  const handleToggleVegetarianFilter = async (val: boolean) => {
     setVegetariansOnlyFilter(val);
     if (currentUser) {
       const updatedProfile = { ...currentUser, isVegetarianFilter: val };
       setCurrentUser(updatedProfile);
-      DatabaseService.updateCurrentUserProfile(updatedProfile);
+      await DatabaseService.updateCurrentUserProfile(updatedProfile);
     }
   };
 
   // 1. ADD MEAL
   const handleAddMeal = async (newMeal: Meal) => {
+    if (!currentUser) return;
     setIsDataSyncing(true);
     try {
-      const saved = await DatabaseService.saveMeal(newMeal);
+      const saved = await DatabaseService.saveMeal(currentUser.id, newMeal);
       setMeals(prev => [saved, ...prev]);
     } finally {
       setIsDataSyncing(false);
@@ -113,9 +118,10 @@ export default function App() {
 
   // 2. UPDATE MEAL
   const handleUpdateMeal = async (updatedMeal: Meal) => {
+    if (!currentUser) return;
     setIsDataSyncing(true);
     try {
-      const saved = await DatabaseService.saveMeal(updatedMeal);
+      const saved = await DatabaseService.saveMeal(currentUser.id, updatedMeal);
       setMeals(prev => prev.map(m => m.id === saved.id ? saved : m));
       
       // Update items inside active planning table if any
@@ -127,9 +133,10 @@ export default function App() {
 
   // 3. DELETE MEAL
   const handleDeleteMeal = async (id: string) => {
+    if (!currentUser) return;
     setIsDataSyncing(true);
     try {
-      await DatabaseService.deleteMeal(id);
+      await DatabaseService.deleteMeal(currentUser.id, id);
       setMeals(prev => prev.filter(m => m.id !== id));
       
       // If deleted meal was planned, clear it
@@ -197,6 +204,20 @@ export default function App() {
     }
   };
 
+  // Global log-out command
+  const handleSignOut = async () => {
+    setIsDataSyncing(true);
+    try {
+      await DatabaseService.logOut();
+      setCurrentUser(null);
+      setMeals([]);
+      setSavedWeeks([]);
+      setSchedule(Array(7).fill(null));
+    } finally {
+      setIsDataSyncing(false);
+    }
+  };
+
   // Inner layout renderer
   const renderActiveTabContent = () => {
     switch (activeTab) {
@@ -237,23 +258,17 @@ export default function App() {
     }
   };
 
-  const currentTabTitle = () => {
-    if (activeTab === 'planner') return '📅 Roulette Planner';
-    if (activeTab === 'meals') return '🍲 Mijn Gerechten';
-    return '🔒 Beheer & Account';
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-0 sm:p-4 md:p-8 text-slate-900 selection:bg-af-orange-transparent selection:text-af-orange font-sans">
       
       {/* MAIN CONTAINER APPLICATION WORKSPACE */}
       <div 
         id="app-wrapper-frame"
-        className="w-full max-w-2xl bg-white relative flex flex-col min-h-screen sm:min-h-[85vh] sm:rounded-2xl sm:shadow-lg border border-slate-200/80 overflow-hidden"
+        className="w-full max-w-2xl bg-white relative flex flex-col min-h-screen sm:min-h-[85vh] sm:rounded-2xl sm:shadow-lg border border-slate-200/80 overflow-hidden shadow-sm"
       >
 
         {/* 3. APP TOP ACTIONS BAR HEADER */}
-        <header className="sticky top-0 z-30 bg-white border-b border-af-border px-5 pt-7 md:pt-5 pb-3.5 flex items-center justify-between shadow-xs">
+        <header className="sticky top-0 z-30 bg-white border-b border-slate-100 px-5 pt-7 md:pt-5 pb-3.5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-2.5">
             <img
               src="https://pizza.agilefanatics.com/images/logo.png"
@@ -272,8 +287,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Sync DB indicator spinner */}
-          <div className="flex items-center gap-1.5 min-w-16">
+          {/* Sync DB indicator spinner & logout button */}
+          <div className="flex items-center gap-2">
             <AnimatePresence mode="popLayout">
               {isDataSyncing && (
                 <motion.div
@@ -284,72 +299,101 @@ export default function App() {
                   className="flex items-center gap-1 text-[9px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full"
                 >
                   <RefreshCw className="h-2.5 w-2.5 animate-spin text-af-orange" />
-                  <span>Syncing...</span>
+                  <span className="hidden xs:inline">Syncing...</span>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Logout button in the top right corner of the screen */}
+            {currentUser && (
+              <button
+                id="header-logout-btn-corner"
+                onClick={handleSignOut}
+                className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:text-af-red hover:bg-neutral-50 border border-slate-200 rounded-xl transition cursor-pointer font-display uppercase tracking-wider"
+                title="Direct uitloggen"
+              >
+                <LogOut className="h-3 w-3 text-slate-400" />
+                <span>Uitloggen</span>
+              </button>
+            )}
           </div>
         </header>
 
         {/* 4. MAIN BODY SCROLLABLE WINDOW */}
-        <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-slate-50/40">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderActiveTabContent()}
-            </motion.div>
-          </AnimatePresence>
+        <main className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-slate-50/40 flex flex-col justify-start">
+          {!currentUser ? (
+            <div className="my-auto py-4">
+              <AuthView
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+                savedWeeks={savedWeeks}
+                setSavedWeeks={setSavedWeeks}
+                onLoadSavedWeek={handleLoadSavedWeek}
+                onDeleteSavedWeek={handleDeleteSavedWeek}
+                onRefreshSavedWeeks={handleRefreshSavedWeeks}
+              />
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {renderActiveTabContent()}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </main>
 
-        {/* 5. NATIVE STYLE BOTTOM TAB NAVIGATION BAR */}
-        <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 z-30 px-5 pt-2.5 pb-5.5 shadow-md flex items-center justify-around font-display">
-          <button
-            id="tab-btn-planner"
-            onClick={() => setActiveTab('planner')}
-            className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
-              activeTab === 'planner' ? 'text-af-orange font-bold font-extrabold' : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            <CalendarDays className="h-4.5 w-4.5" />
-            <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Planner</span>
-            {activeTab === 'planner' && (
-              <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
-            )}
-          </button>
-          
-          <button
-            id="tab-btn-meals"
-            onClick={() => setActiveTab('meals')}
-            className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
-              activeTab === 'meals' ? 'text-af-orange font-bold font-extrabold' : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            <Utensils className="h-4.5 w-4.5" />
-            <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Gerechten</span>
-            {activeTab === 'meals' && (
-              <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
-            )}
-          </button>
+        {/* 5. NATIVE STYLE BOTTOM TAB NAVIGATION BAR (ONLY IF LOGGED IN) */}
+        {currentUser && (
+          <nav className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-105 z-30 px-5 pt-2.5 pb-5.5 shadow-md flex items-center justify-around font-display">
+            <button
+              id="tab-btn-planner"
+              onClick={() => setActiveTab('planner')}
+              className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
+                activeTab === 'planner' ? 'text-af-orange font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <CalendarDays className="h-4.5 w-4.5" />
+              <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Planner</span>
+              {activeTab === 'planner' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
+              )}
+            </button>
+            
+            <button
+              id="tab-btn-meals"
+              onClick={() => setActiveTab('meals')}
+              className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
+                activeTab === 'meals' ? 'text-af-orange font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <Utensils className="h-4.5 w-4.5" />
+              <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Gerechten</span>
+              {activeTab === 'meals' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
+              )}
+            </button>
 
-          <button
-            id="tab-btn-account"
-            onClick={() => setActiveTab('account')}
-            className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
-              activeTab === 'account' ? 'text-af-orange font-bold font-extrabold' : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            <User className="h-4.5 w-4.5" />
-            <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Profiel</span>
-            {activeTab === 'account' && (
-              <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
-            )}
-          </button>
-        </nav>
+            <button
+              id="tab-btn-account"
+              onClick={() => setActiveTab('account')}
+              className={`flex flex-col items-center gap-1 cursor-pointer select-none py-1 transition relative ${
+                activeTab === 'account' ? 'text-af-orange font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <User className="h-4.5 w-4.5" />
+              <span className="text-[10px] uppercase font-bold tracking-wider leading-none mt-0.5">Profiel</span>
+              {activeTab === 'account' && (
+                <motion.div layoutId="activeTabIndicator" className="absolute -bottom-1 w-5 h-0.5 bg-af-orange rounded-full" />
+              )}
+            </button>
+          </nav>
+        )}
       </div>
     </div>
   );

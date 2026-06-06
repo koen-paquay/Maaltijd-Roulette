@@ -29,11 +29,9 @@ export interface SavedWeek {
 }
 
 export interface DatabaseConfig {
-  provider: 'localStorage' | 'supabase' | 'firebase';
+  provider: 'localStorage' | 'supabase';
   supabaseUrl: string;
   supabaseAnonKey: string;
-  firebaseApiKey: string;
-  firebaseProjectId: string;
 }
 
 export const DAY_NAMES_DUTCH = [
