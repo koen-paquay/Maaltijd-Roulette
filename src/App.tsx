@@ -10,7 +10,7 @@ import MealManager from './components/MealManager';
 import ScheduleView from './components/ScheduleView';
 import AuthView from './components/AuthView';
 import { 
-  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle, LogOut, Lock, ArrowRight
+  CalendarDays, Utensils, User, RefreshCw, ShieldAlert, Sparkles, AlertCircle, LogOut, Lock, ArrowRight, Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -31,6 +31,8 @@ export default function App() {
   const [resetError, setResetError] = useState('');
   const [resetSuccessMessage, setResetSuccessMessage] = useState('');
   const [isResetUpdating, setIsResetUpdating] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Visual states
   const [isDataSyncing, setIsDataSyncing] = useState(true);
@@ -466,14 +468,22 @@ export default function App() {
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           id="new-password-input"
-                          type="password"
+                          type={showNewPassword ? 'text' : 'password'}
                           required
                           disabled={isResetUpdating}
                           placeholder="Minimaal 6 tekens"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
+                          className="w-full text-sm pl-9 pr-10 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus:text-slate-600 flex items-center justify-center cursor-pointer transition p-1 rounded-md hover:bg-slate-50"
+                          title={showNewPassword ? 'Verberg wachtwoord' : 'Toon wachtwoord'}
+                        >
+                          {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 
@@ -483,14 +493,22 @@ export default function App() {
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
                           id="confirm-password-input"
-                          type="password"
+                          type={showConfirmPassword ? 'text' : 'password'}
                           required
                           disabled={isResetUpdating}
                           placeholder="••••••"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
+                          className="w-full text-sm pl-9 pr-10 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus:text-slate-600 flex items-center justify-center cursor-pointer transition p-1 rounded-md hover:bg-slate-50"
+                          title={showConfirmPassword ? 'Verberg wachtwoord' : 'Toon wachtwoord'}
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
 

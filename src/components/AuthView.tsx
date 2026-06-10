@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { UserProfile, SavedWeek, DAY_NAMES_DUTCH, BASE_LABELS_DUTCH } from '../types';
 import { DatabaseService } from '../lib/db';
 import { 
-  User, Mail, Lock, ArrowRight, LogOut, Check, Trash2, FolderOpen, CookingPot, AlertCircle
+  User, Mail, Lock, ArrowRight, LogOut, Check, Trash2, FolderOpen, CookingPot, AlertCircle, Eye, EyeOff
 } from 'lucide-react';
 
 interface AuthViewProps {
@@ -36,6 +36,7 @@ export default function AuthView({
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -284,14 +285,22 @@ export default function AuthView({
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 id="auth-password-input"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 disabled={!supabaseConfigured || authLoading}
                 placeholder="••••••"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full text-sm pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
+                className="w-full text-sm pl-9 pr-10 py-2.5 rounded-xl border border-slate-200 outline-none focus:border-af-orange focus:ring-1 focus:ring-af-orange text-slate-800 font-sans"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none focus:text-slate-600 flex items-center justify-center cursor-pointer transition p-1 rounded-md hover:bg-slate-50"
+                title={showPassword ? 'Verberg wachtwoord' : 'Toon wachtwoord'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
