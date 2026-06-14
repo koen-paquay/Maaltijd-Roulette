@@ -67,75 +67,78 @@ export default function App() {
       setIsRecoveringPassword(true);
     }
 
-    async function checkCurrentSession() {
-      setIsDataSyncing(true);
-      try {
-        const user = await DatabaseService.getCurrentSessionUser();
-        if (user) {
-          setCurrentUser(user);
-          setVegetariansOnlyFilter(user.isVegetarianFilter);
-          
-          if (user.activeSchedule) {
-            setSchedule(user.activeSchedule);
-          }
-          if (user.lockedDays) {
-            setLockedDays(user.lockedDays);
-          }
-
-          // Preload meals and schedules in the background
-          const loadedMeals = await DatabaseService.getMeals(user.id);
-          setMeals(loadedMeals);
-          const weeks = await DatabaseService.getSavedWeeks(user.id);
-          setSavedWeeks(weeks);
-        }
-      } catch (err) {
-        console.error('Session restoration failed:', err);
-      } finally {
-        setIsDataSyncing(false);
-      }
-    }
-
-    checkCurrentSession();
-
     if (!supabase) {
+      setIsDataSyncing(false);
       return;
     }
+
+    let lastHandledUserId = '';
 
     // Subscribe to auth events (SignIn, SignOut, TokenRefresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsRecoveringPassword(true);
       }
-      setIsDataSyncing(true);
-      try {
-        if (session?.user) {
+      
+      const currentUserId = session?.user?.id || '';
+
+      // If there is no user session active
+      if (!session?.user) {
+        lastHandledUserId = '';
+        setCurrentUser(null);
+        setMeals([]);
+        setSavedWeeks([]);
+        setSchedule(Array(7).fill(null));
+        setLockedDays(Array(7).fill(false));
+        setIsDataSyncing(false);
+        return;
+      }
+
+      // If user profile is already loaded (USER_UPDATED event triggered by we/user)
+      if (currentUserId === lastHandledUserId) {
+        try {
           const userProfile = await DatabaseService.getCurrentSessionUser();
           if (userProfile) {
             setCurrentUser(userProfile);
             setVegetariansOnlyFilter(userProfile.isVegetarianFilter);
-            
             if (userProfile.activeSchedule) {
               setSchedule(userProfile.activeSchedule);
             }
             if (userProfile.lockedDays) {
               setLockedDays(userProfile.lockedDays);
             }
+          }
+        } catch (err) {
+          console.error('Quiet profile update failed:', err);
+        }
+        return;
+      }
 
-            // Forcefully load specific cloud items for this user session
-            const loadedMeals = await DatabaseService.getMeals(userProfile.id);
-            setMeals(loadedMeals);
-            
-            const weeks = await DatabaseService.getSavedWeeks(userProfile.id);
-            setSavedWeeks(weeks);
+      // First-time load or new user session (session?.user is active and matches new currentUserId)
+      setIsDataSyncing(true);
+      lastHandledUserId = currentUserId;
+
+      try {
+        const userProfile = await DatabaseService.getCurrentSessionUser();
+        if (userProfile) {
+          setCurrentUser(userProfile);
+          setVegetariansOnlyFilter(userProfile.isVegetarianFilter);
+          
+          if (userProfile.activeSchedule) {
+            setSchedule(userProfile.activeSchedule);
           }
-        } else {
-          if (event !== 'PASSWORD_RECOVERY') {
-            setCurrentUser(null);
-            setMeals([]);
-            setSavedWeeks([]);
-            setSchedule(Array(7).fill(null));
-            setLockedDays(Array(7).fill(false));
+          if (userProfile.lockedDays) {
+            setLockedDays(userProfile.lockedDays);
           }
+
+          // Concurrently retrieve meals & schedules to eliminate query cascading & delay
+          const [loadedMeals, weeks] = await Promise.all([
+            DatabaseService.getMeals(userProfile.id),
+            DatabaseService.getSavedWeeks(userProfile.id)
+          ]);
+          
+          setMeals(loadedMeals);
+          setSavedWeeks(weeks);
         }
       } catch (err) {
         console.error('Auth state change syncing failed:', err);
@@ -151,7 +154,7 @@ export default function App() {
 
   // Autosave active progress (schedule + lockedDays) to user profile metadata when they change
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || isDataSyncing) return;
 
     const syncToCloud = async () => {
       try {
@@ -182,7 +185,7 @@ export default function App() {
     }, 1000);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [schedule, lockedDays, currentUser?.id]);
+  }, [schedule, lockedDays, currentUser?.id, isDataSyncing]);
 
   // Hook to handle updating vegetarian profile setting
   const handleToggleVegetarianFilter = async (val: boolean) => {
@@ -351,13 +354,36 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-0 sm:p-4 md:p-8 text-slate-900 selection:bg-af-orange-transparent selection:text-af-orange font-sans">
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-0 sm:p-4 md:p-[2.5rem] text-slate-900 selection:bg-af-orange-transparent selection:text-af-orange font-sans">
       
-      {/* MAIN CONTAINER APPLICATION WORKSPACE */}
-      <div 
-        id="app-wrapper-frame"
-        className="w-full max-w-2xl bg-white relative flex flex-col min-h-screen sm:min-h-[85vh] sm:rounded-2xl sm:shadow-lg border border-slate-200/80 overflow-hidden shadow-sm"
-      >
+      {isDataSyncing && !currentUser && !isRecoveringPassword ? (
+        <div className="w-full max-w-md bg-white border border-slate-200/80 rounded-2xl p-10 shadow-lg flex flex-col items-center justify-center min-h-[50vh] my-auto space-y-6">
+          <div className="flex flex-col items-center justify-center gap-4">
+            <img
+              src="https://pizza.agilefanatics.com/images/logo.png"
+              alt="Agile Fanatics"
+              className="h-9 w-auto block select-none"
+              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+            />
+            <div className="relative flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full border-2 border-slate-150 animate-pulse" />
+              <RefreshCw className="absolute h-5 w-5 animate-spin text-af-orange" />
+            </div>
+          </div>
+          <div className="text-center space-y-1.5">
+            <h3 className="font-display font-extrabold text-[13px] text-slate-800 uppercase tracking-widest">
+              Maaltijd Roulette <span className="text-[10px] bg-af-orange-light text-af-orange border border-af-orange-transparent font-extrabold px-1.5 py-0.5 rounded-sm leading-tight ml-1">PRO</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-2 leading-relaxed font-sans max-w-[260px] mx-auto">
+              Je planner en gerechten worden veilig geladen uit Supabase. Een klein moment geduld alstublieft...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div 
+          id="app-wrapper-frame"
+          className="w-full max-w-2xl bg-white relative flex flex-col min-h-screen sm:min-h-[85vh] sm:rounded-2xl sm:shadow-lg border border-slate-200/80 overflow-hidden shadow-sm"
+        >
 
         {/* 3. APP TOP ACTIONS BAR HEADER */}
         <header className="sticky top-0 z-30 bg-white border-b border-slate-100 px-5 pt-7 md:pt-5 pb-3.5 flex items-center justify-between shadow-xs">
@@ -623,6 +649,7 @@ export default function App() {
           </nav>
         )}
       </div>
+      )}
     </div>
   );
 }
