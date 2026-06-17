@@ -280,39 +280,41 @@ export const DatabaseService = {
 
   async saveMeal(userId: string, meal: Meal): Promise<Meal> {
     if (!supabase) return meal;
+    try {
+      const { error } = await supabase
+        .from('meals')
+        .upsert({
+          id: meal.id,
+          user_id: userId,
+          name: meal.name,
+          base: meal.base,
+          is_vegetarian: meal.isVegetarian,
+          notes: meal.notes || ''
+        });
 
-    const { error } = await supabase
-      .from('meals')
-      .upsert({
-        id: meal.id,
-        user_id: userId,
-        name: meal.name,
-        base: meal.base,
-        is_vegetarian: meal.isVegetarian,
-        notes: meal.notes || ''
-      });
-
-    if (error) {
-      throw new Error(`Gerecht opslaan mislukt: ${error.message}`);
+      if (error) throw error;
+      return meal;
+    } catch (e: any) {
+      console.error('DatabaseService.saveMeal error:', e);
+      throw new Error(`Gerecht opslaan mislukt: ${e.message}`);
     }
-
-    return meal;
   },
 
   async deleteMeal(userId: string, id: string): Promise<string> {
     if (!supabase) return id;
+    try {
+      const { error } = await supabase
+        .from('meals')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
 
-    const { error } = await supabase
-      .from('meals')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (error) {
-      throw new Error(`Gerecht verwijderen mislukt: ${error.message}`);
+      if (error) throw error;
+      return id;
+    } catch (e: any) {
+      console.error('DatabaseService.deleteMeal error:', e);
+      throw new Error(`Gerecht verwijderen mislukt: ${e.message}`);
     }
-
-    return id;
   },
 
   // Weekly Schedule Menu Operations for active user
@@ -352,38 +354,40 @@ export const DatabaseService = {
 
   async saveWeek(userId: string, week: SavedWeek): Promise<SavedWeek> {
     if (!supabase) return week;
+    try {
+      const { error } = await supabase
+        .from('saved_weeks')
+        .upsert({
+          id: week.id,
+          user_id: userId,
+          title: week.title,
+          schedule: week.schedule,
+          is_vegetarian_filter: week.isVegetarianFilter,
+          created_at: week.createdAt
+        });
 
-    const { error } = await supabase
-      .from('saved_weeks')
-      .upsert({
-        id: week.id,
-        user_id: userId,
-        title: week.title,
-        schedule: week.schedule,
-        is_vegetarian_filter: week.isVegetarianFilter,
-        created_at: week.createdAt
-      });
-
-    if (error) {
-      throw new Error(`Weekmenu opslaan mislukt: ${error.message}`);
+      if (error) throw error;
+      return week;
+    } catch (e: any) {
+      console.error('DatabaseService.saveWeek error:', e);
+      throw new Error(`Weekmenu opslaan mislukt: ${e.message}`);
     }
-
-    return week;
   },
 
   async deleteWeek(userId: string, weekId: string): Promise<string> {
     if (!supabase) return weekId;
+    try {
+      const { error } = await supabase
+        .from('saved_weeks')
+        .delete()
+        .eq('id', weekId)
+        .eq('user_id', userId);
 
-    const { error } = await supabase
-      .from('saved_weeks')
-      .delete()
-      .eq('id', weekId)
-      .eq('user_id', userId);
-
-    if (error) {
-      throw new Error(`Weekmenu verwijderen mislukt: ${error.message}`);
+      if (error) throw error;
+      return weekId;
+    } catch (e: any) {
+      console.error('DatabaseService.deleteWeek error:', e);
+      throw new Error(`Weekmenu verwijderen mislukt: ${e.message}`);
     }
-
-    return weekId;
   }
 };
